@@ -4,8 +4,8 @@ from .. import Turtle
 from PIL import Image
 from telethon import events
 
-myimage = "https://telegra.ph/file/e74be9e4a2ffca7699dff.jpg"
-startmessage = "Hey!! Thanks For Using This As Base For Your Bot\nVisit @turtlecommunitytg For Any Help"
+myimage = "https://telegra.ph/file/0a943172f34b271534e44.jpg"
+startmessage = "Hey There ! I Am Alive"
 
 @Turtle.on(events.NewMessage(incoming=True, pattern="/start"))
 async def start(event):
