@@ -6,7 +6,7 @@ from PIL import Image
 from telethon import events
 
 myimage = "https://telegra.ph/file/0a943172f34b271534e44.jpg"
-startmessage = f"Hey <b>{event.sender.first_name}</b> I Am Alive\nCheck /help for commands"
+startmessage = f"Hey There !!I Am Alive\nCheck /help for commands"
 
 @Turtle.on(events.NewMessage(incoming=True, pattern="/start"))
 async def start(event):
