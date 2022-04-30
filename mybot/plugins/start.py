@@ -1,5 +1,6 @@
 import requests
 import os
+from . import *
 from .. import Turtle
 from PIL import Image
 from telethon import events
