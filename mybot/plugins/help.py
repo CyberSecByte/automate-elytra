@@ -1,8 +1,7 @@
 from .. import Turtle
-from telethon import events, Button
+from telethon import events
 
 @Turtle.on(events.NewMessage(incoming=True, pattern="/help"))
 async def help(event):
-    thebuttonn = [[Button.url("🐢Support Channel🐢",url="https://t.me/turtlecommunitytg")],[Button.url("🐢Github🐢", url="https://github.com/turtlecommunity")]]
-    helptext = f"Hey <b>{event.sender.first_name}</b>\nYou can Join Our Support Channel From Below."
-    await  Turtle.send_message(event.chat_id,helptext, buttons=thebuttonn,parse_mode="HTML")
+    helptext = f"Below are the list of all the commands\n/start to check the bot status\n/help to view this :p\n/build devicename typeofbuild"
+    await event.reply(helptext)
