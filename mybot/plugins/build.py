@@ -11,10 +11,10 @@ async def build(event):
     valuetwo = all[2]
     f = await event.reply("```Setting up the variables...```")
     os.system(f"echo -e DEVICE={valueone}\nBUILD_TYPE={valuetwo} > inputvars.conf")
-    i = open("../elytra/pasteenv.txt", "r")
+    i = open("inputvars.conf", "r")
     varslink = await paste(i.read())
     final_varslink = f"Output For Environment is Pasted [Here ]({varslink})"
-    await m.edit(final_varslink)
+    await f.edit(final_varslink)
     m = await event.reply("```Launching Env Command...```")
     os.system(f"bash jenkin.sh > jenkins.txt")
     i = open("jenkins.txt", "r")
