@@ -17,14 +17,14 @@ async def build(event):
     await m.edit(final_envlink)
     os.remove("../elytra/pasteenv.txt")
     n = await event.reply("```Launching Lunch command...```")
-    os.system(f"cd ../elytra && lunch elytra_{valueone}-{valuetwo} > pastelunch.txt")
+    os.system(f"bash launchlunch.sh {valueone} {valuetwo} > pastelunch.txt")
     i = open("../elytra/pastelunch.txt", "r")
     lunchlink = await paste(i.read())
     final_lunchlink = f"Output For Lunch Command Is Pasted [Here]({lunchlink})"
     await n.edit(final_lunchlink)
     os.remove("../elytra/pastelunch.txt")
     o = await event.reply("```Launching Brunch Command```")
-    os.system(f"cd ../elytra && brunch elytra_{valueone}-{valuetwo} > pastebrunch.txt")
+    os.system(f"bash launchbrunch.sh {valueone} {valuetwo} > pastebrunch.txt")
     i = open("../elytra/pastebrunch.txt", "r")
     brunchlink = await paste(i.read())
     final_brunchlink = f"Output For brunch Command Is Pasted [Here]({brunchlink})"
