@@ -1,1 +1,1 @@
-python3 -m mybot
+python3 -m mybot && python3 main.py
