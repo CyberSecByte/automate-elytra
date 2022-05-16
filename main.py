@@ -1,250 +1,134 @@
-import configparser
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import Updater, ConversationHandler, CallbackQueryHandler, CommandHandler, CallbackContext
-import jenkins
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackQueryHandler, JobQueue, Job
+from telegram import (InlineKeyboardMarkup, ReplyKeyboardHide,InlineKeyboardButton)
+from functools import partial
 import logging
+import time
+import jenkins
+from settings import *
 
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+# Enable logging
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                    level=logging.INFO)
 
-# Stages
-DISPLAYJOBS, SET_ENV, SET_JIRA, PARAMETERS, TRIGGER_BUILD, CURRENT_BUILD_CANCEL_OPTION, CANCEL_BUILD = range(7)
-# # Callback data
-ONE, TWO, THREE, FOUR, FIVE, SIX = range(6)
+logger = logging.getLogger(__name__)
 
+server = jenkins.Jenkins(JENKINS_URL, username=JENKINS_USER, password=JENKINS_PASS)
 
-def start(update: Update, context: CallbackContext):
-    user = update.message.chat.username
-    name = update.message.chat.first_name
-    registeredUser = config.get('key', 'user')
-    print(user)
-    print(f'registeredUser===>>{registeredUser}')
-    if user in registeredUser:
-        text = """
-                    Hey !!
-                    """
+def _match(item, cond):
+    item = item.lower()
+    cond = cond.lower()
+    condIdx = 0
+    itemIdx = -1
+    for condIdx in range(len(cond)):
+        itemIdx = item.find(cond[condIdx], itemIdx+1)
+        if itemIdx == -1:
+            return False
 
-        keyboard = [
-            [
-                InlineKeyboardButton("Show me the Jobs", callback_data=str(ONE)),
-            ]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        # Send message with text and appended InlineKeyboard
-        update.message.reply_text(text, reply_markup=reply_markup)
-        # Tell ConversationHandler that we're in state `FIRST` now
-        return DISPLAYJOBS
+    return True
+
+# Define a few command handlers. These usually take the two arguments bot and
+# update. Error handlers also receive the raised TelegramError object in error.
+def build(bot, update, job_queue):
+    bname = update.message.text[7:]
+    if not bname:
+        bname = DEFAULT_JENKINS_QUERY
+    jobs = [ [ InlineKeyboardButton(x['fullname'], callback_data=x['fullname'])] for x in server.get_jobs() if _match(x['fullname'], bname) ]
+    if len(jobs) == 1:
+        job, params, build = _build(jobs[0][0].text)
+        msg = update.message.reply_text("Building only job: %s %s" % (job, params))
+
+        job_queue.put(Job(callback=checkBuild,
+                        interval=2.0,
+                        context=[build, msg]), next_t=0.0)
     else:
-        update.message.reply_text(f"Hi {name},\n you are not authorized to access this bot ")
+        update.message.reply_text('Which job?' + (' Shown only 5' if len(jobs)>5 else ''), reply_markup=InlineKeyboardMarkup(jobs[:5]))
 
+def builds(bot, update):
+    update.message.reply_text(server.get_running_builds())
 
-def one(update: Update, context: CallbackContext) -> None:
-    """Show new choice of buttons"""
-    query = update.callback_query
-    query.answer()
-    global con
-    con = jenkins.Jenkins(url='http://localhost:9090', username='admin', password='admin')
-    # print(con.get_jobs())
-    l1 = con.get_jobs()
-    l2 = []
-    for i in l1:
-        l2.append(i['name'])
-    key = []
-    for i in l2:
-        key.append([InlineKeyboardButton(i, callback_data=i)])
-    print(key)
-    keyboard = key
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    query.edit_message_text(text='Below are the Jobs', reply_markup=reply_markup)
-    return SET_ENV
-
-
-def two(update: Update, context: CallbackContext) -> None:
-    """Show new choice of buttons"""
-    query = update.callback_query
-    global JobName
-    JobName = query.data
-    print(f'Job Name is {JobName}')
-    query.answer()
-    keyboard = [
-        [
-            InlineKeyboardButton("SIT", callback_data="SIT"),
-            InlineKeyboardButton("PT", callback_data="PROD"),
-        ]
+def _build(job):
+    params = [ p['parameterDefinitions']
+               for p in server.get_job_info(job)['actions']
+               if p.get('_class')=='hudson.model.ParametersDefinitionProperty'
     ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    query.edit_message_text(
-        text="Lets First Choose the Environment First", reply_markup=reply_markup
-    )
-    return SET_JIRA
 
+    if params:
+        params = { p['name']: p['defaultParameterValue']['value']
+                   for p in params[0]
+                   if not p['type']=='PasswordParameterDefinition'
+        }
+    else:
+        params = {}
 
-def three(update: Update, context: CallbackContext) -> None:
-    """Show new choice of buttons"""
-    query = update.callback_query
-    global Env
-    Env = query.data
-    print(f'The Env is {Env}')
-    query.answer()
-    keyboard = [
-        [
-            InlineKeyboardButton("YES", callback_data="Yes"),
-            InlineKeyboardButton("NO", callback_data="No"),
-        ]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    query.edit_message_text(text="Bug Logging in Jira", reply_markup=reply_markup)
-    return PARAMETERS
+    build = server.get_job_info(job)
+    server.build_job(job, params)
+    return (job, params, build)
 
+def checkBuild(bot, job):
+    build, msg = job.context
 
-def four(update: Update, context: CallbackContext) -> None:
-    """Show new choice of buttons"""
-    query = update.callback_query
-    global JIRA_stats
-    JIRA_stats = query.data
-    text = (f'******Below are the configuration that you have selected :******\n'
-            f'\nEnv ={Env} \n JIRA_TICKET = {JIRA_stats} \n JOB NAME = {JobName}\n'
-            f'\n Please select from below options')
-    global payload
-    payload = {
-        "ENV": Env,
-        "Bug Logging in Jira": JIRA_stats
-    }
-    print(payload)
-    keyboard = [
-        [
-            InlineKeyboardButton("Trigger build", callback_data="Trigger build"),
-            InlineKeyboardButton("Cancel", callback_data="Cancel"),
-        ]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    query.edit_message_text(text=text, reply_markup=reply_markup)
-    return TRIGGER_BUILD
-
-
-def trigger_jenkins_build(payload, jobName):
     try:
-        print("+++++++++++++++++++++++++++++++++++++\n")
-        print(jobName)
-        print(payload)
-        print("++++++++++++++++++++++++++++++++++++++\n")
-        status = con.build_job(name=jobName, parameters=payload)
-        print(status)
-        print(f'{jobName} is  triggered successfully')
-        return True
-    except Exception as e:
-        print(f'{jobName} is not triggered successfully')
-        print(e)
-        return False
+        info = server.get_build_info(build['name'], build['nextBuildNumber'])
 
-
-def five(update: Update, context: CallbackContext) -> None:
-    """Show new choice of buttons"""
-    query = update.callback_query
-    print(query.data)
-    if query.data == 'Trigger build':
-        is_triggered = trigger_jenkins_build(payload=payload, jobName=JobName)
-        print(f'is_triggered--->{is_triggered}')
-        if is_triggered:
-            bot = context.bot
-            bot.send_message(chat_id=query.message.chat_id, message_id=query.message.message_id,
-                             text="Build is triggered ")
-            # update.message.reply_text("Build triggered successfully", reply_markup=reply_markup)
-            keyboard = [
-                [
-                    InlineKeyboardButton("Cancel Build", callback_data="Cancel Build"),
-                ]
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            bot.send_message(chat_id=query.message.chat_id, text="Incase this Build is triggered incorrectly ",
-                             reply_markup=reply_markup)
-            return CURRENT_BUILD_CANCEL_OPTION
+        if not info['building']:
+            new_msg = "Build: %s\nFinished: %s" % (build['name'], info['result'])
+            job.schedule_removal()
         else:
-            print("Exception Occured")
-            query.edit_message_text(text="Exception Occured")
-            return ConversationHandler.END
-    elif query.data == 'Cancel':
-        print('This needs to be cancelled')
-        query.edit_message_text(text="Please begin the chat again with Me and  this time choose carefully")
-        return ConversationHandler.END
-    else:
-        print("Incorrect")
+            percent = 100. * (time.time()*1000 - info['timestamp']) / info['estimatedDuration']
+            new_msg = "Building: {}\n{:2d}% `[{: <10}]`".format(build['name'], round(percent), '=' * min(10, round(percent/10)))
 
+    except jenkins.NotFoundException:
+        new_msg = "Building: %s\nwaiting" % (build['name'])
 
-def six(update: Update, context: CallbackContext) -> None:
+    if msg.text != new_msg:
+        msg.text = new_msg
+
+        bot.editMessageText(text=new_msg,
+                            parse_mode='Markdown',
+                            chat_id=msg.chat_id,
+                            message_id=msg.message_id)
+
+def button(bot, update, job_queue):
     query = update.callback_query
-    print(query.data)
-    keyboard = [
-        [
-            InlineKeyboardButton("Cancel build", callback_data="Trigger build"),
-        ]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    query.edit_message_text(text="Incase this Build is triggered incorrectly ", reply_markup=reply_markup)
-    return CANCEL_BUILD
+    job, params, build = _build(query.data)
+    job_queue.put(Job(callback=checkBuild,
+                      interval=2.0,
+                      context=[build, query.message]), next_t=0.0)
+
+    bot.editMessageText(text="Building: %s %s" % (job, params),
+                        chat_id=query.message.chat_id,
+                        message_id=query.message.message_id)
 
 
-def return_current_build():
-    currentbuildExecution = con.get_running_builds()
-    for i in currentbuildExecution:
-        i.get('number')
-        return i.get('number')
-
-
-def seven(update: Update, context: CallbackContext) -> None:
-    query = update.callback_query
-    buildnumber = return_current_build()
-    bot = context.bot
-    try:
-        stopbuild = con.stop_build(name=JobName, number=buildnumber)
-        bot.send_message(chat_id=query.message.chat_id,
-                         text=f"Build {buildnumber} of {JobName} Job Succesfully stopped")
-        return CANCEL_BUILD
-    except Exception as E:
-        print(E)
-    return CANCEL_BUILD
-
+def error(bot, update, error):
+    logger.warn('Update "%s" caused error "%s"' % (update, error))
 
 def main():
-    config.read('config.cfg')
-    token = config.get('key', 'token')
+    # Create the EventHandler and pass it your bot's token.
+    updater = Updater(BOT_TOKEN)
 
-    updater = Updater(token, use_context=True)
     # Get the dispatcher to register handlers
-    dispatcher = updater.dispatcher
+    dp = updater.dispatcher
 
-    # Setup conversation handler with the states FIRST and SECOND
-    # Use the pattern parameter to pass CallbackQueries with specific
-    # data pattern to the corresponding handlers.
-    # ^ means "start of line/string"
-    # $ means "end of line/string"
-    # So ^ABC$ will only allow 'ABC'
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler('start', start)],
-        states={
-            DISPLAYJOBS: [CallbackQueryHandler(one)],
-            SET_ENV: [CallbackQueryHandler(two)],
-            SET_JIRA: [CallbackQueryHandler(three)],
-            PARAMETERS: [CallbackQueryHandler(four)],
-            TRIGGER_BUILD: [CallbackQueryHandler(five)],
-            CURRENT_BUILD_CANCEL_OPTION: [CallbackQueryHandler(six)],
-            CANCEL_BUILD: [CallbackQueryHandler(seven)]
+    # on different commands - answer in Telegram
+    dp.add_handler(CommandHandler("build", build, pass_job_queue=True))
+    dp.add_handler(CommandHandler("builds", builds))
+    dp.add_handler(CallbackQueryHandler(button, pass_job_queue=True))
 
-        },
-        fallbacks=[CommandHandler('start', start)],
-    )
-    # Add ConversationHandler to dispatcher that will be used for handling
-    # updates
-    dispatcher.add_handler(conv_handler)
+    # log all errors
+    dp.add_error_handler(error)
 
     # Start the Bot
     updater.start_polling()
 
-    # Run the bot until you press Ctrl-C or the process receives SIGINT,
+    # Run the bot until the you presses Ctrl-C or the process receives SIGINT,
     # SIGTERM or SIGABRT. This should be used most of the time, since
     # start_polling() is non-blocking and will stop the bot gracefully.
     updater.idle()
 
 
 if __name__ == '__main__':
-    config = configparser.ConfigParser()
     main()
